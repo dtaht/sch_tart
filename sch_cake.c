@@ -199,13 +199,6 @@ struct cake_sched_data {
 	struct qdisc_watchdog watchdog;
 	u8		tin_index[64];
 
-	/* bandwidth capacity estimate */
-	u64		last_packet_time;
-	u64		avg_packet_interval;
-	u64		avg_window_begin;
-	u32		avg_window_bytes;
-	u32		avg_peak_bandwidth;
-	u64		last_reconfig_time;
 };
 
 enum {
@@ -524,7 +517,6 @@ static s32 cake_enqueue(struct sk_buff *skb, struct Qdisc *sch)
 		b->backlogs[idx]    += slen;
 		b->tin_backlog      += slen;
 		sch->qstats.backlog += slen;
-		q->avg_window_bytes += slen;
 
 		qdisc_tree_decrease_qlen(sch, 1);
 		consume_skb(skb);
@@ -540,43 +532,7 @@ static s32 cake_enqueue(struct sk_buff *skb, struct Qdisc *sch)
 		b->backlogs[idx]    += len;
 		b->tin_backlog      += len;
 		sch->qstats.backlog += len;
-		q->avg_window_bytes += len;
 		q->buffer_used      += skb->truesize;
-	}
-
-	/* incoming bandwidth capacity estimate */
-	if (q->rate_flags & CAKE_FLAG_AUTORATE_INGRESS)
-	{
-		u64 packet_interval = now - q->last_packet_time;
-
-		if (packet_interval > NSEC_PER_SEC)
-			packet_interval = NSEC_PER_SEC;
-
-		/* filter out short-term bursts, eg. wifi aggregation */
-		q->avg_packet_interval = cake_ewma(q->avg_packet_interval,
-			packet_interval,
-			packet_interval > q->avg_packet_interval ? 2 : 8);
-
-		q->last_packet_time = now;
-
-		if (packet_interval > q->avg_packet_interval) {
-			u64 window_interval = now - q->avg_window_begin;
-			u64 b = q->avg_window_bytes * (u64) NSEC_PER_SEC;
-
-			do_div(b, window_interval);
-			q->avg_peak_bandwidth =
-				cake_ewma(q->avg_peak_bandwidth, b,
-					b > q->avg_peak_bandwidth ? 2 : 8);
-			q->avg_window_bytes = 0;
-			q->avg_window_begin = now;
-
-			if (q->rate_flags & CAKE_FLAG_AUTORATE_INGRESS &&
-				now - q->last_reconfig_time >
-				(NSEC_PER_SEC / 4)) {
-				q->rate_bps = (q->avg_peak_bandwidth * 7) >> 3;
-				cake_reconfigure(sch);
-			}
-		}
 	}
 
 	/* flowchain */
@@ -1269,7 +1225,6 @@ static int cake_init(struct Qdisc *sch, struct nlattr *opt)
 	}
 
 	cake_reconfigure(sch);
-	q->avg_peak_bandwidth = q->rate_bps;
 	return 0;
 
 nomem:
@@ -1368,7 +1323,6 @@ static int cake_dump_stats(struct Qdisc *sch, struct gnet_dump *d)
 		st->last_skblen[i]       = b->last_skblen;
 		st->max_skblen[i]        = b->max_skblen;
 	}
-	st->capacity_estimate = q->avg_peak_bandwidth;
 	st->memory_limit      = q->buffer_limit;
 	st->memory_used       = q->buffer_max_used;
 
