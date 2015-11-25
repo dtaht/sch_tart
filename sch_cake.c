@@ -134,7 +134,6 @@ struct cake_tin_data {
 	struct codel_params cparams;
 	u32	drop_overlimit;
 	u16	bulk_flow_count;
-	u16	sparse_flow_count;
 
 	u32	last_skblen;
 	u32	max_skblen;
@@ -527,7 +526,6 @@ static s32 cake_enqueue(struct sk_buff *skb, struct Qdisc *sch)
 	/* flowchain */
 	if (list_empty(&flow->flowchain)) {
 		list_add_tail(&flow->flowchain, &b->new_flows);
-		b->sparse_flow_count++;
 		flow->deficit = b->quantum;
 		flow->dropped = 0;
 	}
@@ -644,7 +642,6 @@ retry:
 		flow->deficit += b->quantum;
 		list_move_tail(&flow->flowchain, &b->old_flows);
 		if (head == &b->new_flows) {
-			b->sparse_flow_count--;
 			b->bulk_flow_count++;
 		}
 		goto retry;
@@ -666,13 +663,10 @@ retry:
 		if ((head == &b->new_flows) &&
 		    !list_empty(&b->old_flows)) {
 			list_move_tail(&flow->flowchain, &b->old_flows);
-			b->sparse_flow_count--;
 			b->bulk_flow_count++;
 		} else {
 			list_del_init(&flow->flowchain);
-			if (head == &b->new_flows)
-				b->sparse_flow_count--;
-			else
+			if (!(head == &b->new_flows))
 				b->bulk_flow_count--;
 		}
 		goto begin;
@@ -1186,7 +1180,6 @@ static int cake_init(struct Qdisc *sch, struct nlattr *opt)
 		b->perturbation = prandom_u32();
 		INIT_LIST_HEAD(&b->new_flows);
 		INIT_LIST_HEAD(&b->old_flows);
-		b->sparse_flow_count = 0;
 		b->bulk_flow_count = 0;
 		/* codel_params_init(&b->cparams); */
 
@@ -1298,7 +1291,7 @@ static int cake_dump_stats(struct Qdisc *sch, struct gnet_dump *d)
 		st->way_misses[i]        = 0;
 		st->way_collisions[i]    = 0;
 
-		st->sparse_flows[i]      = b->sparse_flow_count;
+		st->sparse_flows[i]      = 0;
 		st->bulk_flows[i]        = b->bulk_flow_count;
 		st->last_skblen[i]       = b->last_skblen;
 		st->max_skblen[i]        = b->max_skblen;
