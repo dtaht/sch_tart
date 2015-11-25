@@ -8,12 +8,13 @@ target and interval are 32 bits but in ns?
 * DONE move stats to end of gso loop
 * DONE correct ecn reporting
 * DONE always peel
-* TODO remove sqrt cache
-* TODO find correct codel model
+* DONE remove sqrt cache
+* DONE find correct codel model
+* TODO remove input rate estimator
 	ns2_codel?
 fixme - remove #define CAKE_SET_WAYS (8)
 run newton twice in reverse
-remove input rate estimator
+
 figure out quantum calculation
 share codel_vars across all tins
 rate_overhead

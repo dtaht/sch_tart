@@ -105,7 +105,6 @@
  * operation.
  */
 
-#define CAKE_SET_WAYS (8)
 #define CAKE_MAX_TINS (8)
 
 #ifndef CAKE_VERSION
@@ -126,7 +125,6 @@ struct cake_flow {
 struct cake_tin_data {
 	struct cake_flow *flows;/* Flows table [flows_cnt] */
 	u32	*backlogs;	/* backlog table [flows_cnt] */
-	u32	*tags;		/* for set association [flows_cnt] */
 	u32	 flows_cnt;	/* number of flows - must be multiple of
 				 * CAKE_SET_WAYS
 				 */
@@ -244,27 +242,18 @@ cake_hash(struct cake_tin_data *q, const struct sk_buff *skb, int flow_mode)
 #else
 	struct flow_keys keys, host_keys;
 #endif
-	u32 flow_hash, host_hash, reduced_hash;
+	u32 flow_hash, reduced_hash;
 
-	if (unlikely(flow_mode == CAKE_FLOW_NONE ||
-		     q->flows_cnt < CAKE_SET_WAYS))
+	if (unlikely(flow_mode == CAKE_FLOW_NONE))
 		return 0;
 
 #if KERNEL_VERSION(4, 2, 0) > LINUX_VERSION_CODE
 	skb_flow_dissect(skb, &keys);
 
-	host_hash = jhash_3words(
+	flow_hash = jhash_3words(
 		(__force u32)((flow_mode & CAKE_FLOW_DST_IP) ? keys.dst : 0),
 		(__force u32)((flow_mode & CAKE_FLOW_SRC_IP) ? keys.src : 0),
 		(__force u32)0, q->perturbation);
-
-	if (!(flow_mode & CAKE_FLOW_FLOWS))
-		flow_hash = host_hash;
-	else
-		flow_hash = jhash_3words(
-			(__force u32)keys.dst,
-			(__force u32)keys.src ^ keys.ip_proto,
-			(__force u32)keys.ports, q->perturbation);
 
 #else
 
@@ -314,63 +303,9 @@ cake_hash(struct cake_tin_data *q, const struct sk_buff *skb, int flow_mode)
 		};
 	}
 
-	host_hash = flow_hash_from_keys(&host_keys);
-	if (!(flow_mode & CAKE_FLOW_FLOWS))
-		flow_hash = host_hash;
-	else
-		flow_hash = flow_hash_from_keys(&keys);
+	flow_hash = flow_hash_from_keys(&host_keys);
 #endif
 	reduced_hash = reciprocal_scale(flow_hash, q->flows_cnt);
-
-	/* set-associative hashing */
-	/* fast path if no hash collision (direct lookup succeeds) */
-	if (likely(q->tags[reduced_hash] == flow_hash)) {
-		q->way_directs++;
-	} else {
-		u32 inner_hash = reduced_hash % CAKE_SET_WAYS;
-		u32 outer_hash = reduced_hash - inner_hash;
-		u32 i, j, k;
-
-		/* check if any active queue in the set is reserved for
-		 * this flow. count the empty queues in the set, too
-		 */
-
-		for (i = j = 0, k = inner_hash; i < CAKE_SET_WAYS;
-		     i++, k = (k + 1) % CAKE_SET_WAYS) {
-			if (q->tags[outer_hash + k] == flow_hash) {
-				q->way_hits++;
-				goto found;
-			} else if (list_empty(&q->flows[outer_hash + k].
-					      flowchain)) {
-				j++;
-			}
-		}
-
-		/* no queue is reserved for this flow */
-		if (j) {
-			/* there's at least one empty queue, so find one
-			 * to reserve.
-			 */
-			q->way_misses++;
-
-			for (i = 0; i < CAKE_SET_WAYS; i++, k = (k + 1)
-				     % CAKE_SET_WAYS)
-				if (list_empty(&q->flows[outer_hash + k].
-					       flowchain))
-					goto found;
-		} else {
-			/* With no empty queues default to the original
-			 * queue and accept the collision.
-			 */
-			q->way_collisions++;
-		}
-
-found:
-		/* reserve queue for future packets in same flow */
-		reduced_hash = outer_hash + k;
-		q->tags[reduced_hash] = flow_hash;
-	}
-
 	return reduced_hash;
 }
 
@@ -1272,7 +1207,6 @@ static void cake_destroy(struct Qdisc *sch)
 		u32 i;
 
 		for (i = 0; i < CAKE_MAX_TINS; i++) {
-			cake_free(q->tins[i].tags);
 			cake_free(q->tins[i].backlogs);
 			cake_free(q->tins[i].flows);
 		}
@@ -1326,8 +1260,7 @@ static int cake_init(struct Qdisc *sch, struct nlattr *opt)
 		b->flows    = cake_zalloc(b->flows_cnt *
 					     sizeof(struct cake_flow));
 		b->backlogs = cake_zalloc(b->flows_cnt * sizeof(u32));
-		b->tags     = cake_zalloc(b->flows_cnt * sizeof(u32));
-		if (!b->flows || !b->backlogs || !b->tags)
+		if (!b->flows || !b->backlogs)
 			goto nomem;
 
 		for (j = 0; j < b->flows_cnt; j++) {
