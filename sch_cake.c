@@ -100,7 +100,7 @@
  * (low) is used for that tin in the current pass.
  *
  * This qdisc incorporates much of Eric Dumazet's fq_codel code, which
- * he kindly dual-licensed, which we customised for use as an
+ * he kindly granted us permission to use, which we customised for use as an
  * integrated subordinate.  See sch_fq_codel.c for details of
  * operation.
  */
@@ -132,8 +132,8 @@ struct cake_tin_data {
 	u16	quantum;	/* psched_mtu(qdisc_dev(sch)); */
 	u16	bulk_flow_count;
 
-	struct codel_params cparams;
 	u32	drop_overlimit;
+	struct codel_params cparams;
 
 	struct list_head new_flows; /* list of new flows */
 	struct list_head old_flows; /* list of old flows */
@@ -579,7 +579,7 @@ static struct sk_buff *cake_dequeue(struct Qdisc *sch)
 	struct list_head *head;
 	u16 prev_drop_count, prev_ecn_mark;
 	u32 len;
-	u64 now = ktime_get_ns();
+	codel_time_t now = ktime_get_ns();
 	s32 i;
 
 begin:
@@ -639,7 +639,8 @@ retry:
 	prev_drop_count = flow->cvars.drop_count;
 	prev_ecn_mark   = flow->cvars.ecn_mark;
 
-	skb = codel_dequeue(sch, &flow->cvars, &b->cparams, q->buffer_used >
+	skb = codel_dequeue(sch, &flow->cvars, &b->cparams, now,
+			    q->buffer_used >
 			    (q->buffer_limit >> 2) + (q->buffer_limit >> 1));
 
 	b->tin_dropped  += flow->cvars.drop_count - prev_drop_count;
