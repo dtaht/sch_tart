@@ -176,7 +176,6 @@ struct cake_sched_data {
 
 	/* resource tracking */
 	u32		buffer_used;
-	u32		buffer_max_used;
 	u32		buffer_limit;
 	u32		buffer_config_limit;
 
@@ -529,9 +528,6 @@ static s32 cake_enqueue(struct sk_buff *skb, struct Qdisc *sch)
 		flow->deficit = b->quantum;
 		flow->dropped = 0;
 	}
-
-	if (q->buffer_used > q->buffer_max_used)
-		q->buffer_max_used = q->buffer_used;
 
 	if (q->buffer_used > q->buffer_limit) {
 		u32  dropped = 0;
@@ -1297,7 +1293,7 @@ static int cake_dump_stats(struct Qdisc *sch, struct gnet_dump *d)
 		st->max_skblen[i]        = b->max_skblen;
 	}
 	st->memory_limit      = q->buffer_limit;
-	st->memory_used       = q->buffer_max_used;
+	st->memory_used       = 0;
 
 	i = gnet_stats_copy_app(d, st, sizeof(*st));
 	cake_free(st);
