@@ -280,7 +280,7 @@ cake_hash(struct cake_tin_data *q, const struct sk_buff *skb, int flow_mode)
 		};
 	}
 
-	flow_hash = flow_hash_from_keys(&host_keys);
+	flow_hash = flow_hash_from_keys(&keys);
 #endif
 	reduced_hash = reciprocal_scale(flow_hash, q->flows_cnt);
 	return reduced_hash;
