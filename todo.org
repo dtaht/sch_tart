@@ -1,26 +1,47 @@
+* DONE move bypass to cake_reconfigure
+* DONE move stats to end of gso loop
+* DONE correct ecn reporting
+* TODO Should drop reporting and mark reporting be merged?
+I don't think so, even though that's what fq_codel seems to do
+* DONE always peel
+* DONE remove sqrt cache
+* DONE try different codel model
+* DONE remove input rate estimator
+* DONE remove #define CAKE_SET_WAYS (8)
+* DONE run newton twice in reverse
+* DONE reuse now in codel_dequeue
+* TODO Fix bug with FQ (diffserv4 no workie)
+Seem to have introduced a hashing problem when I ripped out
+the set associative hash, we are always seing single queue
+drop behavior now.
+* TODO share codel_vars across all tins
+calculate base target/interval instead of one derived from rate
+
 target and interval are 32 bits but in ns?
 
         b->cparams.target = max(byte_target_ns, ns_target);
         b->cparams.interval = max(rtt_est_ns +
                                      b->cparams.target - ns_target,
                                      b->cparams.target * 8);
-* DONE move bypass to cake_reconfigure
-* DONE move stats to end of gso loop
-* DONE correct ecn reporting
-* DONE always peel
-* DONE remove sqrt cache
-* DONE find correct codel model
-* TODO remove input rate estimator
-	ns2_codel?
-fixme - remove #define CAKE_SET_WAYS (8)
-run newton twice in reverse
 
-figure out quantum calculation
-share codel_vars across all tins
-rate_overhead
-rip out useless statistics
-remove packet limit
-
-remove lower target bound in favor of increased interval
+* TODO Review both ns2_codel and fq_codel codel implementations
+* TODO figure out quantum calculation better
+* TODO Is rate_overhead actually useful?
+* TODO Improve overload protection
+It is presently a memory limit only thing, should 
+probably be an exessive delay thing delay > 4 * interval?
+* DONE rip out useless statistics
+My criteria for a statistic is - does it report on variable
+needed by the algorithm? If not, there better be a good human
+UI reason for it. 
+At the moment, since quantum is autocalculated, I'd like that
+as a statistic....
+* TODO something I keep forgetting to do
+* TODO remove packet limits
+rely on memory usage only
+* TODO custom_dequeue has some unneeded subtlties
+? b->backlogs[q->current_flow???)]
+* TODO remove lower target bound in favor of increased interval
 or:
 dynamically soften delay targets with lots of flows
+	ns2_codel?
