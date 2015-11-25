@@ -130,13 +130,10 @@ struct cake_tin_data {
 				 */
 	u32	perturbation;/* hash perturbation */
 	u16	quantum;	/* psched_mtu(qdisc_dev(sch)); */
+	u16	bulk_flow_count;
 
 	struct codel_params cparams;
 	u32	drop_overlimit;
-	u16	bulk_flow_count;
-
-	u32	last_skblen;
-	u32	max_skblen;
 
 	struct list_head new_flows; /* list of new flows */
 	struct list_head old_flows; /* list of old flows */
@@ -144,8 +141,8 @@ struct cake_tin_data {
 	/* time_next = time_this + ((len * rate_ns) >> rate_shft) */
 	u64	tin_time_next_packet;
 	u32	tin_rate_ns;
-	u16	tin_rate_shft;
 	u32	tin_rate_bps;
+	u16	tin_rate_shft;
 
 	u16	tin_quantum_prio;
 	u16	tin_quantum_band;
@@ -468,10 +465,6 @@ static s32 cake_enqueue(struct sk_buff *skb, struct Qdisc *sch)
 			if (q->time_next_packet < now)
 				q->time_next_packet = now;
 	}
-
-	b->last_skblen = len;
-	if (unlikely(b->last_skblen > b->max_skblen))
-		b->max_skblen = b->last_skblen;
 
 	/* Split GSO aggregates if they're likely to impair flow isolation
 	 * or if we need to know individual packet sizes for framing overhead.
@@ -1289,8 +1282,8 @@ static int cake_dump_stats(struct Qdisc *sch, struct gnet_dump *d)
 
 		st->sparse_flows[i]      = 0;
 		st->bulk_flows[i]        = b->bulk_flow_count;
-		st->last_skblen[i]       = b->last_skblen;
-		st->max_skblen[i]        = b->max_skblen;
+		st->last_skblen[i]       = 0;
+		st->max_skblen[i]        = 0;
 	}
 	st->memory_limit      = q->buffer_limit;
 	st->memory_used       = 0;
