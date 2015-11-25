@@ -10,10 +10,14 @@ I don't think so, even though that's what fq_codel seems to do
 * DONE remove #define CAKE_SET_WAYS (8)
 * DONE run newton twice in reverse
 * DONE reuse now in codel_dequeue
-* TODO Fix bug with FQ (diffserv4 no workie)
+* DONE Fix bug with FQ (diffserv4 no workie)
 Seem to have introduced a hashing problem when I ripped out
 the set associative hash, we are always seing single queue
-drop behavior now.
+drop behavior now. FIXED: host_keys hash is not useful
+for the 5 tuple. Not sure if it's useful for src or dst only
+either
+* TODO SQM mode
+A three bin shaper exactly equal to the sqm-scripts
 * TODO share codel_vars across all tins
 calculate base target/interval instead of one derived from rate
 
