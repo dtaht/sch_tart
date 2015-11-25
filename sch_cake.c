@@ -133,7 +133,6 @@ struct cake_tin_data {
 	u16	bulk_flow_count;
 
 	u32	drop_overlimit;
-	struct codel_params cparams;
 
 	struct list_head new_flows; /* list of new flows */
 	struct list_head old_flows; /* list of old flows */
@@ -157,6 +156,7 @@ struct cake_tin_data {
 
 struct cake_sched_data {
 	struct cake_tin_data *tins;
+	struct codel_params cparams;
 	u16		tin_cnt;
 	u8		tin_mode;
 	u8		flow_mode;
@@ -639,7 +639,7 @@ retry:
 	prev_drop_count = flow->cvars.drop_count;
 	prev_ecn_mark   = flow->cvars.ecn_mark;
 
-	skb = codel_dequeue(sch, &flow->cvars, &b->cparams, now,
+	skb = codel_dequeue(sch, &flow->cvars, &q->cparams, now,
 			    q->buffer_used >
 			    (q->buffer_limit >> 2) + (q->buffer_limit >> 1));
 
@@ -704,8 +704,7 @@ static const struct nla_policy cake_policy[TCA_CAKE_MAX + 1] = {
 	[TCA_CAKE_WASH]          = { .type = NLA_U32 },
 };
 
-static void cake_set_rate(struct cake_tin_data *b, u64 rate, u32 mtu,
-			  codel_time_t ns_target, codel_time_t rtt_est_ns)
+static void cake_set_rate(struct cake_tin_data *b, u64 rate)
 {
 	/* convert byte-rate into time-per-byte
 	 * so it will always unwedge in reasonable time.
@@ -713,8 +712,6 @@ static void cake_set_rate(struct cake_tin_data *b, u64 rate, u32 mtu,
 	static const u64 MIN_RATE = 64;
 	u64 rate_ns = 0;
 	u8  rate_shft = 0;
-	codel_time_t byte_target_ns;
-	u32 byte_target = mtu + (mtu >> 1);
 
 	if (rate) {
 		rate_shft = 32;
@@ -730,12 +727,6 @@ static void cake_set_rate(struct cake_tin_data *b, u64 rate, u32 mtu,
 	b->tin_rate_ns   = rate_ns;
 	b->tin_rate_shft = rate_shft;
 
-	byte_target_ns = (byte_target * rate_ns) >> rate_shft;
-
-	b->cparams.target = max(byte_target_ns, ns_target);
-	b->cparams.interval = max(rtt_est_ns +
-				     b->cparams.target - ns_target,
-				     b->cparams.target * 8);
 	b->quantum = max(min(rate >> 12, 1514ULL), 300ULL);
 }
 
@@ -744,7 +735,6 @@ static void cake_config_besteffort(struct Qdisc *sch)
 	struct cake_sched_data *q = qdisc_priv(sch);
 	struct cake_tin_data *b = &q->tins[0];
 	u64 rate = q->rate_bps;
-	u32 mtu = psched_mtu(qdisc_dev(sch));
 	u32 i;
 
 	q->tin_cnt = 1;
@@ -752,7 +742,7 @@ static void cake_config_besteffort(struct Qdisc *sch)
 	for (i = 0; i < 64; i++)
 		q->tin_index[i] = 0;
 
-	cake_set_rate(b, rate, mtu, US2TIME(q->target), US2TIME(q->interval));
+	cake_set_rate(b, rate);
 	b->tin_quantum_band = 65535;
 	b->tin_quantum_prio = 65535;
 }
@@ -762,7 +752,6 @@ static void cake_config_precedence(struct Qdisc *sch)
 	/* convert high-level (user visible) parameters into internal format */
 	struct cake_sched_data *q = qdisc_priv(sch);
 	u64 rate = q->rate_bps;
-	u32 mtu = psched_mtu(qdisc_dev(sch));
 	u32 quantum1 = 256;
 	u32 quantum2 = 256;
 	u32 i;
@@ -775,8 +764,7 @@ static void cake_config_precedence(struct Qdisc *sch)
 	for (i = 0; i < q->tin_cnt; i++) {
 		struct cake_tin_data *b = &q->tins[i];
 
-		cake_set_rate(b, rate, mtu, US2TIME(q->target),
-				US2TIME(q->interval));
+		cake_set_rate(b, rate);
 
 		b->tin_quantum_prio = max_t(u16, 1U, quantum1);
 		b->tin_quantum_band = max_t(u16, 1U, quantum2);
@@ -854,7 +842,6 @@ static void cake_config_diffserv8(struct Qdisc *sch)
 
 	struct cake_sched_data *q = qdisc_priv(sch);
 	u64 rate = q->rate_bps;
-	u32 mtu = psched_mtu(qdisc_dev(sch));
 	u32 quantum1 = 256;
 	u32 quantum2 = 256;
 	u32 i;
@@ -889,8 +876,7 @@ static void cake_config_diffserv8(struct Qdisc *sch)
 	for (i = 0; i < q->tin_cnt; i++) {
 		struct cake_tin_data *b = &q->tins[i];
 
-		cake_set_rate(b, rate, mtu, US2TIME(q->target),
-				US2TIME(q->interval));
+		cake_set_rate(b, rate);
 
 		b->tin_quantum_prio = max_t(u16, 1U, quantum1);
 		b->tin_quantum_band = max_t(u16, 1U, quantum2);
@@ -921,7 +907,6 @@ static void cake_config_diffserv4(struct Qdisc *sch)
 
 	struct cake_sched_data *q = qdisc_priv(sch);
 	u64 rate = q->rate_bps;
-	u32 mtu = psched_mtu(qdisc_dev(sch));
 	u32 quantum = 256;
 	u32 i;
 
@@ -952,14 +937,10 @@ static void cake_config_diffserv4(struct Qdisc *sch)
 	}
 
 	/* class characteristics */
-	cake_set_rate(&q->tins[0], rate, mtu,
-		      US2TIME(q->target), US2TIME(q->interval));
-	cake_set_rate(&q->tins[1], rate - (rate >> 4), mtu,
-		      US2TIME(q->target), US2TIME(q->interval));
-	cake_set_rate(&q->tins[2], rate - (rate >> 2), mtu,
-		      US2TIME(q->target), US2TIME(q->interval));
-	cake_set_rate(&q->tins[3], rate >> 2, mtu,
-		      US2TIME(q->target), US2TIME(q->interval));
+	cake_set_rate(&q->tins[0], rate);
+	cake_set_rate(&q->tins[1], rate - (rate >> 4));
+	cake_set_rate(&q->tins[2], rate - (rate >> 2));
+	cake_set_rate(&q->tins[3], rate >> 2);
 
 	/* priority weights */
 	q->tins[0].tin_quantum_prio = quantum >> 4;
@@ -1016,6 +997,9 @@ static void cake_reconfigure(struct Qdisc *sch)
 	} else {
 		q->buffer_limit = ~0;
 	}
+
+	q->cparams.target = max_t(u64,US2TIME(q->target),0);
+	q->cparams.interval = US2TIME(q->interval);
 
 	if (q->rate_bps)
 		sch->flags &= ~TCQ_F_CAN_BYPASS;
@@ -1262,9 +1246,9 @@ static int cake_dump_stats(struct Qdisc *sch, struct gnet_dump *d)
 		struct cake_tin_data *b = &q->tins[i];
 
 		st->threshold_rate[i]     = b->tin_rate_bps;
-		st->target_us[i]          = codel_time_to_us(b->cparams.target);
+		st->target_us[i]          = codel_time_to_us(q->cparams.target);
 		st->interval_us[i]        =
-			codel_time_to_us(b->cparams.interval);
+			codel_time_to_us(q->cparams.interval);
 
 		/* TODO FIXME: add missing aspects of these composite stats */
 		st->sent[i].packets       = b->packets;
