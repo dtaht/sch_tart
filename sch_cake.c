@@ -884,9 +884,6 @@ static void cake_set_rate(struct cake_tin_data *b, u64 rate, u32 mtu,
 	b->cparams.interval = max(rtt_est_ns +
 				     b->cparams.target - ns_target,
 				     b->cparams.target * 8);
-	b->cparams.threshold = (b->cparams.target >> 15) *
-		(b->cparams.interval >> 15) * 2;
-
 	b->quantum = max(min(rate >> 12, 1514ULL), 300ULL);
 }
 

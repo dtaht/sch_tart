@@ -105,12 +105,10 @@ static inline u32 codel_time_to_us(codel_time_t val)
  * struct codel_params - contains codel parameters
  * @interval:	initial drop rate
  * @target:     maximum persistent sojourn time
- * @threshold:	tolerance for product of sojourn time and time above target
  */
 struct codel_params {
 	codel_time_t	interval;
 	codel_time_t	target;
-	codel_time_t	threshold;
 };
 
 /**
@@ -225,21 +223,13 @@ static bool codel_should_drop(const struct sk_buff *skb,
 		/* went below - stay below for at least interval */
 		vars->first_above_time = 0;
 		return false;
-	} else if (vars->dropping) {
-		return true;
 	}
 
 	if (vars->first_above_time == 0) {
 		/* just went above from below; mark the time */
-		vars->first_above_time = now;
+		vars->first_above_time = now + p->interval;
 
-	} else if (vars->count > 1 && now - vars->drop_next < 8 * p->interval) {
-		/* we were recently dropping; be more aggressive */
-		return now > codel_control_law(vars->first_above_time,
-						p->interval,
-						vars->rec_inv_sqrt);
-	} else if (((now - vars->first_above_time) >> 15) *
-		   ((now - codel_get_enqueue_time(skb)) >> 15) > p->threshold) {
+	} else if (now > vars->first_above_time) {
 		return true;
 	}
 
@@ -337,12 +327,8 @@ static struct sk_buff *codel_dequeue(struct Qdisc *sch,
 		 */
 		if (vars->count > 2 &&
 		    now - vars->drop_next < 8 * p->interval) {
-			/* when count is halved, time interval is
-			 * multiplied by 1.414...
-			 */
-			vars->count /= 2;
-			vars->rec_inv_sqrt = (vars->rec_inv_sqrt * 92682) >>
-			  16;
+			vars->count -= 2;
+			codel_Newton_step(vars);
 		} else {
 			vars->count = 1;
 			vars->rec_inv_sqrt = ~0U >> REC_INV_SQRT_SHIFT;
