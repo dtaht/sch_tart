@@ -158,11 +158,6 @@ struct cake_tin_data {
 	u32	packets;
 	u64	bytes;
 
-	/* moving averages */
-	codel_time_t avge_delay;
-	codel_time_t peak_delay;
-	codel_time_t base_delay;
-
 	/* hash function stats */
 	u32	way_directs;
 	u32	way_hits;
@@ -605,7 +600,6 @@ static struct sk_buff *cake_dequeue(struct Qdisc *sch)
 	u32 len;
 	u64 now = ktime_get_ns();
 	s32 i;
-	codel_time_t delay;
 
 begin:
 	if (!sch->q.qlen)
@@ -700,14 +694,6 @@ retry:
 
 	flow->deficit -= len;
 	b->tin_deficit -= len;
-
-	/* collect delay stats */
-	delay = now - codel_get_enqueue_time(skb);
-	b->avge_delay = cake_ewma(b->avge_delay, delay, 8);
-	b->peak_delay = cake_ewma(b->peak_delay, delay,
-				     delay > b->peak_delay ? 2 : 8);
-	b->base_delay = cake_ewma(b->base_delay, delay,
-				     delay < b->base_delay ? 2 : 8);
 
 	/* charge packet bandwidth to this and all lower tins, and
 	 * to the global shaper.
@@ -1310,9 +1296,9 @@ static int cake_dump_stats(struct Qdisc *sch, struct gnet_dump *d)
 		st->ecn_marked[i].packets = b->tin_ecn_mark;
 		st->backlog[i].bytes      = b->tin_backlog;
 
-		st->peak_delay_us[i] = codel_time_to_us(b->peak_delay);
-		st->avge_delay_us[i] = codel_time_to_us(b->avge_delay);
-		st->base_delay_us[i] = codel_time_to_us(b->base_delay);
+		st->peak_delay_us[i] = 0;
+		st->avge_delay_us[i] = 0;
+		st->base_delay_us[i] = 0;
 
 		st->way_indirect_hits[i] = b->way_hits;
 		st->way_misses[i]        = b->way_misses;
