@@ -1,0 +1,25 @@
+target and interval are 32 bits but in ns?
+
+        b->cparams.target = max(byte_target_ns, ns_target);
+        b->cparams.interval = max(rtt_est_ns +
+                                     b->cparams.target - ns_target,
+                                     b->cparams.target * 8);
+* DONE move bypass to cake_reconfigure
+* DONE move stats to end of gso loop
+* DONE correct ecn reporting
+* DONE always peel
+* TODO remove sqrt cache
+* TODO find correct codel model
+	ns2_codel?
+fixme - remove #define CAKE_SET_WAYS (8)
+run newton twice in reverse
+remove input rate estimator
+figure out quantum calculation
+share codel_vars across all tins
+rate_overhead
+rip out useless statistics
+remove packet limit
+
+remove lower target bound in favor of increased interval
+or:
+dynamically soften delay targets with lots of flows
