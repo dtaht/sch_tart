@@ -1285,7 +1285,6 @@ static int cake_init(struct Qdisc *sch, struct nlattr *opt)
 	struct cake_sched_data *q = qdisc_priv(sch);
 	int i, j;
 
-	codel_cache_init();
 	sch->limit = 10240;
 	q->tin_mode = CAKE_MODE_DIFFSERV4;
 	q->flow_mode  = CAKE_FLOW_FLOWS;

@@ -137,13 +137,10 @@ struct codel_vars {
 #define REC_INV_SQRT_BITS (8 * sizeof(u16))
 /* needed shift to get a Q0.32 number from rec_inv_sqrt */
 #define REC_INV_SQRT_SHIFT (32 - REC_INV_SQRT_BITS)
-#define REC_INV_SQRT_CACHE (16)
 
 /* Newton approximation method needs more iterations at small inputs,
  * so cache them.
  */
-
-static u16 codel_rec_inv_sqrt_cache[REC_INV_SQRT_CACHE] = {0};
 
 static void codel_vars_init(struct codel_vars *vars)
 {
@@ -158,37 +155,14 @@ static void codel_vars_init(struct codel_vars *vars)
  */
 static void codel_Newton_step(struct codel_vars *vars)
 {
-	if (vars->count < REC_INV_SQRT_CACHE &&
-	   codel_rec_inv_sqrt_cache[vars->count]) {
-		vars->rec_inv_sqrt = codel_rec_inv_sqrt_cache[vars->count];
-	} else {
-		u32 invsqrt = ((u32)vars->rec_inv_sqrt) << REC_INV_SQRT_SHIFT;
-		u32 invsqrt2 = ((u64)invsqrt * invsqrt) >> 32;
-		u64 val = (3LL << 32) - ((u64)vars->count * invsqrt2);
+	u32 invsqrt = ((u32)vars->rec_inv_sqrt) << REC_INV_SQRT_SHIFT;
+	u32 invsqrt2 = ((u64)invsqrt * invsqrt) >> 32;
+	u64 val = (3LL << 32) - ((u64)vars->count * invsqrt2);
 
-		val >>= 2; /* avoid overflow in following multiply */
-		val = (val * invsqrt) >> (32 - 2 + 1);
+	val >>= 2; /* avoid overflow in following multiply */
+	val = (val * invsqrt) >> (32 - 2 + 1);
 
-		vars->rec_inv_sqrt = val >> REC_INV_SQRT_SHIFT;
-	}
-}
-
-static void codel_cache_init(void)
-{
-	struct codel_vars v;
-
-	codel_vars_init(&v);
-	v.rec_inv_sqrt = ~0U >> REC_INV_SQRT_SHIFT;
-	codel_rec_inv_sqrt_cache[0] = v.rec_inv_sqrt;
-
-	for (v.count = 1; v.count < REC_INV_SQRT_CACHE; v.count++) {
-		codel_Newton_step(&v);
-		codel_Newton_step(&v);
-		codel_Newton_step(&v);
-		codel_Newton_step(&v);
-
-		codel_rec_inv_sqrt_cache[v.count] = v.rec_inv_sqrt;
-	}
+	vars->rec_inv_sqrt = val >> REC_INV_SQRT_SHIFT;
 }
 
 /*
