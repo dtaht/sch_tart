@@ -157,12 +157,6 @@ struct cake_tin_data {
 
 	u32	packets;
 	u64	bytes;
-
-	/* hash function stats */
-	u32	way_directs;
-	u32	way_hits;
-	u32	way_misses;
-	u32	way_collisions;
 }; /* number of tins is small, so size of this struct doesn't matter much */
 
 struct cake_sched_data {
@@ -1300,9 +1294,9 @@ static int cake_dump_stats(struct Qdisc *sch, struct gnet_dump *d)
 		st->avge_delay_us[i] = 0;
 		st->base_delay_us[i] = 0;
 
-		st->way_indirect_hits[i] = b->way_hits;
-		st->way_misses[i]        = b->way_misses;
-		st->way_collisions[i]    = b->way_collisions;
+		st->way_indirect_hits[i] = 0;
+		st->way_misses[i]        = 0;
+		st->way_collisions[i]    = 0;
 
 		st->sparse_flows[i]      = b->sparse_flow_count;
 		st->bulk_flows[i]        = b->bulk_flow_count;
