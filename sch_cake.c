@@ -217,7 +217,7 @@ cake_hash(struct cake_tin_data *q, const struct sk_buff *skb, int flow_mode)
 #if KERNEL_VERSION(4, 2, 0) > LINUX_VERSION_CODE
 	struct flow_keys keys;
 #else
-	struct flow_keys keys, host_keys;
+	struct flow_keys keys;
 #endif
 	u32 flow_hash, reduced_hash;
 
