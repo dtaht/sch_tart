@@ -153,7 +153,7 @@ static void codel_vars_init(struct codel_vars *vars)
  *
  * Here, invsqrt is a fixed point number (< 1.0), 32bit mantissa, aka Q0.32
  */
-static void codel_Newton_step(struct codel_vars *vars)
+static inline void codel_Newton_step(struct codel_vars *vars)
 {
 	u32 invsqrt = ((u32)vars->rec_inv_sqrt) << REC_INV_SQRT_SHIFT;
 	u32 invsqrt2 = ((u64)invsqrt * invsqrt) >> 32;
