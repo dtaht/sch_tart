@@ -243,43 +243,6 @@ cake_hash(struct cake_tin_data *q, const struct sk_buff *skb, int flow_mode)
 	skb_flow_dissect_flow_keys(skb, &keys,
 				FLOW_DISSECTOR_F_STOP_AT_FLOW_LABEL);
 #endif
-	/* flow_hash_from_keys() sorts the addresses by value, so we have
-	 * to preserve their order in a separate data structure to treat
-	 * src and dst host addresses as independently selectable.
-	 */
-	host_keys = keys;
-	host_keys.ports.ports     = 0;
-	host_keys.basic.ip_proto  = 0;
-	host_keys.keyid.keyid     = 0;
-	host_keys.tags.vlan_id    = 0;
-	host_keys.tags.flow_label = 0;
-
-	if (!(flow_mode & CAKE_FLOW_SRC_IP)) {
-		switch (host_keys.control.addr_type) {
-		case FLOW_DISSECTOR_KEY_IPV4_ADDRS:
-			host_keys.addrs.v4addrs.src = 0;
-			break;
-
-		case FLOW_DISSECTOR_KEY_IPV6_ADDRS:
-			memset(&host_keys.addrs.v6addrs.src, 0,
-			       sizeof(host_keys.addrs.v6addrs.src));
-			break;
-		};
-	}
-
-	if (!(flow_mode & CAKE_FLOW_DST_IP)) {
-		switch (host_keys.control.addr_type) {
-		case FLOW_DISSECTOR_KEY_IPV4_ADDRS:
-			host_keys.addrs.v4addrs.dst = 0;
-			break;
-
-		case FLOW_DISSECTOR_KEY_IPV6_ADDRS:
-			memset(&host_keys.addrs.v6addrs.dst, 0,
-			       sizeof(host_keys.addrs.v6addrs.dst));
-			break;
-		};
-	}
-
 	flow_hash = flow_hash_from_keys(&keys);
 #endif
 	reduced_hash = reciprocal_scale(flow_hash, q->flows_cnt);
