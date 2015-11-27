@@ -676,7 +676,9 @@ static void cake_set_rate(struct cake_tin_data *b, u64 rate)
 	u64 rate_ns = 0;
 	u8  rate_shft = 0;
 
+	b->quantum = 1514;
 	if (rate) {
+		b->quantum = max(min(rate >> 12, 1514ULL), 300ULL);
 		rate_shft = 32;
 		rate_ns = ((u64) NSEC_PER_SEC) << rate_shft;
 		do_div(rate_ns, max(MIN_RATE, rate));
@@ -689,8 +691,6 @@ static void cake_set_rate(struct cake_tin_data *b, u64 rate)
 	b->tin_rate_bps  = rate;
 	b->tin_rate_ns   = rate_ns;
 	b->tin_rate_shft = rate_shft;
-
-	b->quantum = max(min(rate >> 12, 1514ULL), 300ULL);
 }
 
 static void cake_config_besteffort(struct Qdisc *sch)
