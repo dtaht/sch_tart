@@ -1,4 +1,4 @@
-* DONE move bypass to cake_reconfigure
+* DONE move bypass to tart_reconfigure
 * DONE move stats to end of gso loop
 * DONE correct ecn reporting
 * TODO Should drop reporting and mark reporting be merged?
@@ -49,3 +49,15 @@ rely on memory usage only
 or:
 dynamically soften delay targets with lots of flows
 	ns2_codel?
+* TODO track memory by packet size
+
+as an inbound shaper we will usually hav3 2k for acks
+
+* TODO fq_codel bulk drop
+yags
+
+size the number of queues to the rate
+
+6 and 60ms for target and interval
+
+size the number of queues to the bandwidth 48 is 6ms target at 100mbit 32? 64? 3ms target?

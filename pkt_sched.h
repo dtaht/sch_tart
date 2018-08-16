@@ -868,24 +868,24 @@ enum {
 };
 #define TCA_CAKE_MAX	(__TCA_CAKE_MAX - 1)
 
-struct tc_cake_traffic_stats {
+struct tc_tart_traffic_stats {
 	__u32 packets;
 	__u32 link_ms;
 	__u64 bytes;
 };
 
 #define TC_CAKE_MAX_TINS (8)
-struct tc_cake_xstats {
+struct tc_tart_xstats {
 	__u16 version;  /* == 3, increments when struct extended */
 	__u8  max_tins; /* == TC_CAKE_MAX_TINS */
 	__u8  tin_cnt;  /* <= TC_CAKE_MAX_TINS */
 
 	__u32 threshold_rate   [TC_CAKE_MAX_TINS];
 	__u32 target_us        [TC_CAKE_MAX_TINS];
-	struct tc_cake_traffic_stats sent      [TC_CAKE_MAX_TINS];
-	struct tc_cake_traffic_stats dropped   [TC_CAKE_MAX_TINS];
-	struct tc_cake_traffic_stats ecn_marked[TC_CAKE_MAX_TINS];
-	struct tc_cake_traffic_stats backlog   [TC_CAKE_MAX_TINS];
+	struct tc_tart_traffic_stats sent      [TC_CAKE_MAX_TINS];
+	struct tc_tart_traffic_stats dropped   [TC_CAKE_MAX_TINS];
+	struct tc_tart_traffic_stats ecn_marked[TC_CAKE_MAX_TINS];
+	struct tc_tart_traffic_stats backlog   [TC_CAKE_MAX_TINS];
 	__u32 interval_us      [TC_CAKE_MAX_TINS];
 	__u32 way_indirect_hits[TC_CAKE_MAX_TINS];
 	__u32 way_misses       [TC_CAKE_MAX_TINS];
