@@ -355,6 +355,7 @@ retry:
 	prev_drop_count = flow->cvars.drop_count;
 	prev_ecn_mark   = flow->cvars.ecn_mark;
 
+	// I'd come up with a better estimate of overload in a later cut
 	skb = codel_dequeue(sch, &flow->cvars, now,
 			    q->buffer_used >
 			    (q->buffer_limit >> 2) + (q->buffer_limit >> 1));
