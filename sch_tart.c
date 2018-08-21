@@ -1,4 +1,6 @@
-/*
+// SPDX-License-Identifier: GPL-2.0 OR BSD-3-Clause
+
+/* 
  *
  */
 
@@ -65,8 +67,6 @@ struct tart_tin_data {
 	struct tart_flow *flows;/* Flows table [flows_cnt] */
 	u16	 flows_cnt;	/* number of flows - must be multiple of
 				 */
-	u16	quantum;	/* psched_mtu(qdisc_dev(sch)); */
-
 	u32	drop_overlimit;
 
 	struct list_head new_flows; /* list of new flows */
@@ -101,8 +101,6 @@ struct tart_sched_data {
 	u32		rate_bps;
 	u16		rate_flags;
 	s16		rate_overhead;
-	u32		interval;
-	u32		target;
 
 	/* resource tracking */
 	u32		buffer_used;
@@ -258,7 +256,7 @@ static s32 tart_enqueue(struct sk_buff *skb, struct Qdisc *sch)
 	/* flowchain */
 	if (list_empty(&flow->flowchain)) {
 		list_add_tail(&flow->flowchain, &b->new_flows);
-		flow->deficit = b->quantum;
+		flow->deficit = TART_QUANTUM;
 	}
 
 	if (q->buffer_used > q->buffer_limit) {
@@ -344,7 +342,7 @@ retry:
 	q->cur_flow = flow - b->flows;
 
 	if (flow->deficit <= 0) {
-		flow->deficit += b->quantum; // why not handle overhead here?
+		flow->deficit += TART_QUANTUM; // why not handle overhead here?
 		list_move_tail(&flow->flowchain, &b->old_flows);
 		goto retry;
 	}
@@ -399,8 +397,6 @@ static const struct nla_policy tart_policy[TCA_TART_MAX + 1] = {
 	[TCA_TART_BASE_RATE]     = { .type = NLA_U32 },
 	[TCA_TART_ATM]           = { .type = NLA_U32 },
 	[TCA_TART_OVERHEAD]      = { .type = NLA_S32 },
-	[TCA_TART_RTT]           = { .type = NLA_U32 },
-	[TCA_TART_TARGET]        = { .type = NLA_U32 },
 	[TCA_TART_MEMORY]        = { .type = NLA_U32 },
 };
 
@@ -413,9 +409,7 @@ static void tart_set_rate(struct tart_tin_data *b, u64 rate)
 	u64 rate_ns = 0;
 	u8  rate_shft = 0;
 
-	b->quantum = 1514;
 	if (rate) {
-		b->quantum = max(min(rate >> 12, 1514ULL), 300ULL);
 		rate_shft = 32;
 		rate_ns = ((u64) NSEC_PER_SEC) << rate_shft;
 		do_div(rate_ns, max(MIN_RATE, rate));
@@ -447,7 +441,7 @@ static void tart_reconfigure(struct Qdisc *sch)
 	if (q->buffer_config_limit) {
 		q->buffer_limit = q->buffer_config_limit;
 	} else if (q->rate_bps) {
-		u64 t = (u64) q->rate_bps * q->interval;
+		u64 t = (u64) q->rate_bps * TART_INTERVAL;
 
 		do_div(t, USEC_PER_SEC / 4);
 		q->buffer_limit = max_t(u32, t, 65536U);
@@ -455,9 +449,6 @@ static void tart_reconfigure(struct Qdisc *sch)
 	} else {
 		q->buffer_limit = ~0;
 	}
-
-	q->cparams.target = max_t(u64,US2TIME(q->target),0);
-	q->cparams.interval = US2TIME(q->interval);
 
 	sch->flags &= ~TCQ_F_CAN_BYPASS;
 
@@ -491,20 +482,6 @@ static int tart_change(struct Qdisc *sch, struct nlattr *opt)
 
 	if (tb[TCA_TART_OVERHEAD])
 		q->rate_overhead = nla_get_s32(tb[TCA_TART_OVERHEAD]);
-
-	if (tb[TCA_TART_RTT]) {
-		q->interval = nla_get_u32(tb[TCA_TART_RTT]);
-
-		if (!q->interval)
-			q->interval = 1;
-	}
-
-	if (tb[TCA_TART_TARGET]) {
-		q->target = nla_get_u32(tb[TCA_TART_TARGET]);
-
-		if (!q->target)
-			q->target = 6000;
-	}
 
 	if (q->tins) {
 		sch_tree_lock(sch);
@@ -553,11 +530,6 @@ static int tart_init(struct Qdisc *sch, struct nlattr *opt)
 
 	sch->limit = 1024;
 	q->rate_bps = 0; /* unlimited by default */
-
-	q->interval = 60000; /* 60ms default */
-	q->target   =  6000; /* 6ms: codel RFC argues
-			       * for 5 to 10% of interval
-			       */
 
 	q->cur_tin = 0;
 	q->cur_flow  = 0;
@@ -622,12 +594,6 @@ static int tart_dump(struct Qdisc *sch, struct sk_buff *skb)
 	if (nla_put_u32(skb, TCA_TART_OVERHEAD, q->rate_overhead))
 		goto nla_put_failure;
 
-	if (nla_put_u32(skb, TCA_TART_RTT, q->interval))
-		goto nla_put_failure;
-
-	if (nla_put_u32(skb, TCA_TART_TARGET, q->target))
-		goto nla_put_failure;
-
 	if (nla_put_u32(skb, TCA_TART_AUTORATE,
 			!!(q->rate_flags & TART_FLAG_AUTORATE_INGRESS)))
 		goto nla_put_failure;
@@ -663,7 +629,7 @@ static int tart_dump_stats(struct Qdisc *sch, struct gnet_dump *d)
 		st->threshold_rate[i]     = b->tin_rate_bps;
 		st->target_us[i]          = codel_time_to_us(q->cparams.target);
 		st->interval_us[i]        =
-			codel_time_to_us(q->cparams.interval);
+			codel_time_to_us(TART_INTERVAL);
 
 		/* TODO FIXME: add missing aspects of these composite stats */
 		st->sent[i].packets       = b->packets;

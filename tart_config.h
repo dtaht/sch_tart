@@ -1,0 +1,6 @@
+#ifndef __TART_CONFIG
+#define __TART_CONFIG
+#define TART_INTERVAL 60000
+#define TART_TARGET 6000
+#define TART_QUANTUM 1514
+#endif
