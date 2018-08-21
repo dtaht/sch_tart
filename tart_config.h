@@ -5,4 +5,5 @@
 #define TART_QUANTUM 1514
 // Maybe specify this as Mbits not Kbits
 #define TART_BANDWIDTH (1000*1000*100)
+#define TART_FLOWS 1024
 #endif

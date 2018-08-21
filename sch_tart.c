@@ -64,9 +64,6 @@ struct tart_flow {
 }; /* please try to keep this structure <= 64 bytes */
 
 struct tart_tin_data {
-	struct tart_flow *flows;/* Flows table [flows_cnt] */
-	u16	 flows_cnt;	/* number of flows - must be multiple of
-				 */
 	u32	drop_overlimit;
 
 	struct list_head new_flows; /* list of new flows */
@@ -89,6 +86,7 @@ struct tart_tin_data {
 	u64	bytes;
 	u32	max_backlog;
 	flow *  worst_flow; // idx?
+        struct tart_flow flows[TART_FLOWS];
 }; /* number of tins is small, so size of this struct doesn't matter much */
 
 struct tart_sched_data {
@@ -116,13 +114,16 @@ struct tart_sched_data {
 
 enum {
 	TART_FLAG_ATM = 0x0001,
+	TART_FLAG_DOCSIS = 0x0010,
 	TART_FLAG_WASH = 0x0100
 };
 
+#define TART_FLAG_OVERHEAD (TART_FLAG_ATM | TART_FLAG_DOCSIS)
+
 static inline u32
-tart_hash(struct tart_tin_data *q, const struct sk_buff *skb, int flow_mode)
+tart_hash(const struct sk_buff *skb)
 {
-	WARN_ONCE("skb not hashed");
+	return reciprocal_scale(skb_get_hash(skb), TART_FLOWS);
 }
 
 /* helper functions : might be changed when/if skb use a standard list_head */
@@ -150,17 +151,22 @@ flow_queue_add(struct tart_flow *flow, struct sk_buff *skb)
 	skb->next = NULL;
 }
 
+/* Why not just swap this in rather than if it? */
 static inline u32 tart_overhead(struct tart_sched_data *q, u32 in)
 {
-	u32 out = in + q->rate_overhead;
-
-	if (q->rate_flags & TART_FLAG_ATM) {
-		out += 47;
-		out /= 48;
-		out *= 53;
-	}
-
-	return out;
+  switch(q->tart_flags & TART_FLAG_OVERHEAD) {
+  case TART_ATM:
+    u32 out = in + q->rate_overhead;
+    out += 47;
+    out /= 48;
+    out *= 53;
+    return out;
+    break;
+  case: TART_DOCSIS_MODE:
+    // can't remember
+  default: break;
+  }
+  return in;
 }
 
 // fat flow track all the time
@@ -227,7 +233,7 @@ static s32 tart_enqueue(struct sk_buff *skb, struct Qdisc *sch)
 	b = &q->tins[0];
 
 	/* choose flow to insert into */
-	idx = tart_hash(b, skb, q->flow_mode);
+	idx = tart_hash(skb);
 	flow = &b->flows[idx];
 
 	/* ensure shaper state isn't stale */
@@ -298,7 +304,7 @@ static void tart_clear_tin(struct Qdisc *sch)
 	struct tart_tin_data *b = &q->tins[0];
 
 	q->cur_tin = tin;
-	for (q->cur_flow = 0; q->cur_flow < b->flows_cnt; q->cur_flow++)
+	for (q->cur_flow = 0; q->cur_flow < TART_FLOWS; q->cur_flow++)
 		while (custom_dequeue(NULL, sch))
 			;
 }
@@ -548,16 +554,9 @@ static int tart_init(struct Qdisc *sch, struct nlattr *opt)
 	for (i = 0; i < TART_MAX_TINS; i++) {
 		struct tart_tin_data *b = q->tins + i;
 
-		b->flows_cnt = 1024;
 		INIT_LIST_HEAD(&b->new_flows);
 		INIT_LIST_HEAD(&b->old_flows);
-
-		b->flows    = tart_zalloc(b->flows_cnt *
-					     sizeof(struct tart_flow));
-		if (!b->flows)
-			goto nomem;
-
-		for (j = 0; j < b->flows_cnt; j++) {
+		for (j = 0; j < TART_FLOWS; j++) {
 			struct tart_flow *flow = b->flows + j;
 
 			INIT_LIST_HEAD(&flow->flowchain);
@@ -683,13 +682,13 @@ static int tart_dump_class_stats(struct Qdisc *sch, unsigned long cl,
 	struct gnet_stats_queue qs = {0};
 	struct tc_fq_codel_xstats xstats;
 
-	while (tin < q->tin_cnt && idx >= b->flows_cnt) {
-		idx -= b->flows_cnt;
+	while (tin < q->tin_cnt && idx >= TART_FLOWS) {
+		idx -= TART_FLOWS;
 		tin++;
 		b++;
 	}
 
-	if (tin < q->tin_cnt && idx >= b->flows_cnt) {
+	if (tin < q->tin_cnt && idx >= TART_FLOWS) {
 		const struct tart_flow *flow = &b->flows[idx];
 		const struct sk_buff *skb = flow->head;
 
@@ -717,7 +716,7 @@ static int tart_dump_class_stats(struct Qdisc *sch, unsigned long cl,
 	}
 	if (codel_stats_copy_queue(d, NULL, &qs, 0) < 0)
 		return -1;
-	if (tin < q->tin_cnt && idx >= b->flows_cnt)
+	if (tin < q->tin_cnt && idx >= TART_FLOWS)
 		return gnet_stats_copy_app(d, &xstats, sizeof(xstats));
 	return 0;
 }
@@ -733,7 +732,7 @@ static void tart_walk(struct Qdisc *sch, struct qdisc_walker *arg)
 	for (j = k = 0; j < q->tin_cnt; j++) {
 		struct tart_tin_data *b = &q->tins[j];
 
-		for (i = 0; i < b->flows_cnt; i++, k++) {
+		for (i = 0; i < TART_FLOWS; i++, k++) {
 			if (list_empty(&b->flows[i].flowchain) ||
 			    arg->count < arg->skip) {
 				arg->count++;
