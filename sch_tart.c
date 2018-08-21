@@ -259,7 +259,6 @@ static s32 tart_enqueue(struct sk_buff *skb, struct Qdisc *sch)
 	if (list_empty(&flow->flowchain)) {
 		list_add_tail(&flow->flowchain, &b->new_flows);
 		flow->deficit = b->quantum;
-		flow->dropped = 0;
 	}
 
 	if (q->buffer_used > q->buffer_limit) {
@@ -360,7 +359,6 @@ retry:
 	b->tin_dropped  += flow->cvars.drop_count - prev_drop_count;
 	b->tin_ecn_mark += flow->cvars.ecn_mark   - prev_ecn_mark;
 	flow->cvars.ecn_mark = 0;
-	flow->dropped        += flow->cvars.drop_count - prev_drop_count;
 
 	if (!skb) {
 		/* codel dropped the last packet in this queue; try again */
@@ -755,7 +753,7 @@ static int tart_dump_class_stats(struct Qdisc *sch, unsigned long cl,
 			skb = skb->next;
 		}
 		qs.backlog = b->backlogs[idx];
-		qs.drops = flow->dropped;
+		qs.drops = 0;
 	}
 	if (codel_stats_copy_queue(d, NULL, &qs, 0) < 0)
 		return -1;
