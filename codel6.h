@@ -101,16 +101,6 @@ static inline u32 codel_time_to_us(codel_time_t val)
 	return (u32)val;
 }
 
-/*
- * struct codel_params - contains codel parameters
- * @interval:	initial drop rate
- * @target:     maximum persistent sojourn time
- */
-struct codel_params {
-	codel_time_t	interval;
-	codel_time_t	target;
-};
-
 /**
  * struct codel_vars - contains codel variables
  * @count:		how many drops we've done since the last time we
@@ -182,7 +172,6 @@ static codel_time_t codel_control_law(codel_time_t t,
 static bool codel_should_drop(const struct sk_buff *skb,
 			      struct Qdisc *sch,
 			      struct codel_vars *vars,
-			      const struct codel_params *p,
 			      codel_time_t now)
 {
 	if (!skb) {
@@ -192,7 +181,7 @@ static bool codel_should_drop(const struct sk_buff *skb,
 
 	sch->qstats.backlog -= qdisc_pkt_len(skb);
 
-	if (now - codel_get_enqueue_time(skb) < p->target ||
+	if (now - codel_get_enqueue_time(skb) < TART_TARGET ||
 	    !sch->qstats.backlog) {
 		/* went below - stay below for at least interval */
 		vars->first_above_time = 0;
@@ -201,7 +190,7 @@ static bool codel_should_drop(const struct sk_buff *skb,
 
 	if (vars->first_above_time == 0) {
 		/* just went above from below; mark the time */
-		vars->first_above_time = now + p->interval;
+		vars->first_above_time = now + TART_INTERVAL;
 
 	} else if (now > vars->first_above_time) {
 		return true;
@@ -217,7 +206,6 @@ static inline struct sk_buff *custom_dequeue(struct codel_vars *vars,
 
 static struct sk_buff *codel_dequeue(struct Qdisc *sch,
 				     struct codel_vars *vars,
-				     struct codel_params *p,
 				     codel_time_t now,
 				     bool overloaded)
 {
@@ -228,7 +216,7 @@ static struct sk_buff *codel_dequeue(struct Qdisc *sch,
 		vars->dropping = false;
 		return skb;
 	}
-	drop = codel_should_drop(skb, sch, vars, p, now);
+	drop = codel_should_drop(skb, sch, vars, now);
 	if (vars->dropping) {
 		if (!drop) {
 			/* sojourn time below target - leave dropping state */
@@ -243,41 +231,44 @@ static struct sk_buff *codel_dequeue(struct Qdisc *sch,
 			 * hence the while loop.
 			 */
 
-			/* saturating increment */
 			vars->count++;
-			if (!vars->count)
-				vars->count--;
-
 			codel_Newton_step(vars);
 			vars->drop_next = codel_control_law(vars->drop_next,
-							    p->interval,
+							    TART_INTERVAL,
 							    vars->rec_inv_sqrt);
 			do {
 				if (INET_ECN_set_ce(skb) && !overloaded) {
 					vars->ecn_mark++;
-					/* and schedule the next drop */
-					vars->drop_next = codel_control_law(
-						vars->drop_next, p->interval,
-						vars->rec_inv_sqrt);
+					/* and schedule the next drop harder as ecn builds backlogs */
+					vars->count+=2;
+					codel_Newton_step(vars);
+					vars->drop_next = codel_control_law(vars->drop_next,
+							    TART_INTERVAL,
+							    vars->rec_inv_sqrt);
 					goto end;
 				}
+				vars->count++;
+				codel_Newton_step(vars);
+				vars->drop_next = codel_control_law(vars->drop_next,
+								    TART_INTERVAL,
+								    vars->rec_inv_sqrt);
 				qdisc_drop(skb, sch);
 				vars->drop_count++;
 				skb = custom_dequeue(vars, sch);
 				if (skb && !codel_should_drop(skb, sch, vars,
-							      p, now)) {
+							      now)) {
 					/* leave dropping state */
 					vars->dropping = false;
 				} else {
 					/* schedule the next drop */
 					vars->drop_next = codel_control_law(
-						vars->drop_next, p->interval,
+						vars->drop_next, TART_INTERVAL,
 						vars->rec_inv_sqrt);
 				}
 			} while (skb && vars->dropping && now >=
 				 vars->drop_next);
 
-			/* Mark the packet regardless */
+			/* Mark the packet regardless so we have drop and mark */
 			if (skb && INET_ECN_set_ce(skb))
 				vars->ecn_mark++;
 		}
@@ -289,7 +280,7 @@ static struct sk_buff *codel_dequeue(struct Qdisc *sch,
 			vars->drop_count++;
 
 			skb = custom_dequeue(vars, sch);
-			drop = codel_should_drop(skb, sch, vars, p, now);
+			drop = codel_should_drop(skb, sch, vars, now);
 			if (skb && INET_ECN_set_ce(skb))
 				vars->ecn_mark++;
 		}
@@ -299,7 +290,7 @@ static struct sk_buff *codel_dequeue(struct Qdisc *sch,
 		 * last cycle is a good starting point to control it now.
 		 */
 		if (vars->count > 2 &&
-		    now - vars->drop_next < 8 * p->interval) {
+		    now - vars->drop_next < 8 * TART_INTERVAL) {
 			vars->count -= 2;
 			codel_Newton_step(vars);
 		} else {
@@ -307,7 +298,7 @@ static struct sk_buff *codel_dequeue(struct Qdisc *sch,
 			vars->rec_inv_sqrt = ~0U >> REC_INV_SQRT_SHIFT;
 		}
 		codel_Newton_step(vars);
-		vars->drop_next = codel_control_law(now, p->interval,
+		vars->drop_next = codel_control_law(now, TART_INTERVAL,
 						    vars->rec_inv_sqrt);
 	}
 end:
