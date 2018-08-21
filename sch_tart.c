@@ -18,6 +18,7 @@
 #include <net/netlink.h>
 #include <linux/version.h>
 #include "pkt_sched.h"
+#include "tart_config.h"
 #include "codel6.h"
 
 /* The TART Principles:
@@ -242,41 +243,6 @@ static s32 tart_enqueue(struct sk_buff *skb, struct Qdisc *sch)
 				q->time_next_packet = now;
 	}
 
-	/* Split GSO aggregates if they're likely to impair flow isolation
-	 * or if we need to know individual packet sizes for framing overhead.
-	 */
-
-	if (unlikely(skb_is_gso(skb))) {
-		struct sk_buff *segs, *nskb;
-		netdev_features_t features = netif_skb_features(skb);
-		u32 slen = 0;
-		segs = skb_gso_segment(skb, features & ~NETIF_F_GSO_MASK);
-
-		if (IS_ERR_OR_NULL(segs))
-			return qdisc_reshape_fail(skb, sch);
-
-		while (segs) {
-			nskb = segs->next;
-			segs->next = NULL;
-			qdisc_skb_cb(segs)->pkt_len = segs->len;
-			get_codel_cb(segs)->enqueue_time = now;
-			flow_queue_add(flow, segs);
-			/* stats */
-			sch->q.qlen++;
-			b->packets++;
-			slen += segs->len;
-			q->buffer_used      += segs->truesize;
-			segs = nskb;
-		}
-
-		b->bytes            += slen;
-		b->backlogs[idx]    += slen;
-		b->tin_backlog      += slen;
-		sch->qstats.backlog += slen;
-
-		qdisc_tree_decrease_qlen(sch, 1);
-		consume_skb(skb);
-	} else {
 		/* not splitting */
 		get_codel_cb(skb)->enqueue_time = now;
 		flow_queue_add(flow, skb);
@@ -288,7 +254,6 @@ static s32 tart_enqueue(struct sk_buff *skb, struct Qdisc *sch)
 		b->backlogs[idx]    += len;
 		sch->qstats.backlog += len;
 		q->buffer_used      += skb->truesize;
-	}
 
 	/* flowchain */
 	if (list_empty(&flow->flowchain)) {
