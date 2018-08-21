@@ -246,17 +246,17 @@ static s32 tart_enqueue(struct sk_buff *skb, struct Qdisc *sch)
 				q->time_next_packet = now;
 	}
 
-		/* not splitting */
-		get_codel_cb(skb)->enqueue_time = now;
-		flow_queue_add(flow, skb);
+	/* not splitting */
+	get_codel_cb(skb)->enqueue_time = now;
+	flow_queue_add(flow, skb);
 
-		/* stats */
-		sch->q.qlen++;
-		b->packets++;
-		b->bytes            += len;
-		b->backlogs[idx]    += len;
-		sch->qstats.backlog += len;
-		q->buffer_used      += skb->truesize;
+	/* stats */
+	sch->q.qlen++;
+	b->packets++;
+	b->bytes            += len;
+	b->backlogs[idx]    += len;
+	sch->qstats.backlog += len;
+	q->buffer_used      += skb->truesize;
 
 	/* flowchain */
 	if (list_empty(&flow->flowchain)) {
@@ -361,7 +361,7 @@ retry:
 
 	b->tin_dropped  += flow->cvars.drop_count - prev_drop_count;
 	b->tin_ecn_mark += flow->cvars.ecn_mark   - prev_ecn_mark;
-	flow->cvars.ecn_mark = 0;
+	flow->cvars.ecn_mark = 0; // ?
 
 	if (!skb) {
 		/* codel dropped the last packet in this queue; try again */
@@ -377,7 +377,7 @@ retry:
 	qdisc_bstats_update(sch, skb);
 	if (flow->cvars.drop_count && sch->q.qlen) {
 		qdisc_tree_decrease_qlen(sch, flow->cvars.drop_count);
-		flow->cvars.drop_count = 0;
+		flow->cvars.drop_count = 0; // ?
 	}
 
 	len = tart_overhead(q, qdisc_pkt_len(skb));
@@ -488,12 +488,6 @@ static int tart_change(struct Qdisc *sch, struct nlattr *opt)
 	if (tb[TCA_TART_OVERHEAD])
 		q->rate_overhead = nla_get_s32(tb[TCA_TART_OVERHEAD]);
 
-	if (q->tins) {
-		sch_tree_lock(sch);
-		tart_reconfigure(sch);
-		sch_tree_unlock(sch);
-	}
-
 	return 0;
 }
 
@@ -588,10 +582,6 @@ static int tart_dump(struct Qdisc *sch, struct sk_buff *skb)
 		goto nla_put_failure;
 
 	if (nla_put_u32(skb, TCA_TART_OVERHEAD, q->rate_overhead))
-		goto nla_put_failure;
-
-	if (nla_put_u32(skb, TCA_TART_AUTORATE,
-			!!(q->rate_flags & TART_FLAG_AUTORATE_INGRESS)))
 		goto nla_put_failure;
 
 	if (nla_put_u32(skb, TCA_TART_MEMORY, q->buffer_config_limit))
