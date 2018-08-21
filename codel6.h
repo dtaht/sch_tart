@@ -154,10 +154,9 @@ static inline void codel_Newton_step(struct codel_vars *vars)
  * both sqrt() and divide operation.
  */
 static codel_time_t codel_control_law(codel_time_t t,
-				      codel_time_t interval,
 				      u32 rec_inv_sqrt)
 {
-	return t + reciprocal_scale(interval, rec_inv_sqrt <<
+	return t + reciprocal_scale(TART_INTERVAL, rec_inv_sqrt <<
 				    REC_INV_SQRT_SHIFT);
 }
 
@@ -231,14 +230,12 @@ static struct sk_buff *codel_dequeue(struct Qdisc *sch,
 					vars->count+=2;
 					codel_Newton_step(vars);
 					vars->drop_next = codel_control_law(vars->drop_next,
-							    TART_INTERVAL,
 							    vars->rec_inv_sqrt);
 					goto end;
 				}
 				vars->count++;
 				codel_Newton_step(vars);
 				vars->drop_next = codel_control_law(vars->drop_next,
-								    TART_INTERVAL,
 								    vars->rec_inv_sqrt);
 				qdisc_drop(skb, sch);
 				vars->drop_count++;
@@ -250,7 +247,7 @@ static struct sk_buff *codel_dequeue(struct Qdisc *sch,
 				} else {
 					/* schedule the next drop */
 					vars->drop_next = codel_control_law(
-						vars->drop_next, TART_INTERVAL,
+						vars->drop_next,
 						vars->rec_inv_sqrt);
 				}
 			} while (skb && vars->dropping && now >=
@@ -286,7 +283,7 @@ static struct sk_buff *codel_dequeue(struct Qdisc *sch,
 			vars->rec_inv_sqrt = ~0U >> REC_INV_SQRT_SHIFT;
 		}
 		codel_Newton_step(vars);
-		vars->drop_next = codel_control_law(now, TART_INTERVAL,
+		vars->drop_next = codel_control_law(now,
 						    vars->rec_inv_sqrt);
 	}
 end:
