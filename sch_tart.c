@@ -93,7 +93,6 @@ struct tart_tin_data {
 
 struct tart_sched_data {
 	struct tart_tin_data *tins;
-	struct codel_params cparams;
 	/* time_next = time_this + ((len * rate_ns) >> rate_shft) */
 	u16		rate_shft;
 	u64		time_next_packet;
@@ -350,7 +349,7 @@ retry:
 	prev_drop_count = flow->cvars.drop_count;
 	prev_ecn_mark   = flow->cvars.ecn_mark;
 
-	skb = codel_dequeue(sch, &flow->cvars, &q->cparams, now,
+	skb = codel_dequeue(sch, &flow->cvars, now,
 			    q->buffer_used >
 			    (q->buffer_limit >> 2) + (q->buffer_limit >> 1));
 
@@ -529,9 +528,8 @@ static int tart_init(struct Qdisc *sch, struct nlattr *opt)
 	int i, j;
 
 	sch->limit = 1024;
-	q->rate_bps = 0; /* unlimited by default */
+	q->rate_bps = TART_BANDWIDTH_DEFAULT; /* 100MBITS */
 
-	q->cur_tin = 0;
 	q->cur_flow  = 0;
 
 	if (opt) {
@@ -553,7 +551,6 @@ static int tart_init(struct Qdisc *sch, struct nlattr *opt)
 		b->flows_cnt = 1024;
 		INIT_LIST_HEAD(&b->new_flows);
 		INIT_LIST_HEAD(&b->old_flows);
-		/* codel_params_init(&b->cparams); */
 
 		b->flows    = tart_zalloc(b->flows_cnt *
 					     sizeof(struct tart_flow));
@@ -617,17 +614,14 @@ static int tart_dump_stats(struct Qdisc *sch, struct gnet_dump *d)
 	if (!st)
 		return -1;
 
-	BUG_ON(q->tin_cnt > TC_TART_MAX_TINS);
-
-	st->version = 3;
-	st->max_tins = TC_TART_MAX_TINS;
+	st->version = 4;
 	st->tin_cnt = q->tin_cnt;
 
 	for (i = 0; i < q->tin_cnt; i++) {
 		struct tart_tin_data *b = &q->tins[i];
 
 		st->threshold_rate[i]     = b->tin_rate_bps;
-		st->target_us[i]          = codel_time_to_us(q->cparams.target);
+		st->target_us[i]          = TART_TARGET;
 		st->interval_us[i]        =
 			codel_time_to_us(TART_INTERVAL);
 
