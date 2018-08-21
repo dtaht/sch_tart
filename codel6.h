@@ -58,15 +58,8 @@
  * Implemented on linux by Dave Taht and Eric Dumazet
  */
 
-#if KERNEL_VERSION(3, 18, 0) > LINUX_VERSION_CODE
-#include "codel5_compat.h"
-#else
-#define codel_stats_copy_queue(a, b, c, d) gnet_stats_copy_queue(a, b, c, d)
-#define codel_watchdog_schedule_ns(a, b, c) qdisc_watchdog_schedule_ns(a, b, c)
-#endif
 
-
-/* CoDel5 uses a real clock, unlike codel */
+/* CoDel6 will end up with a codel clock when i get round to it */
 
 typedef u64 codel_time_t;
 typedef s64 codel_tdiff_t;
@@ -231,11 +224,6 @@ static struct sk_buff *codel_dequeue(struct Qdisc *sch,
 			 * hence the while loop.
 			 */
 
-			vars->count++;
-			codel_Newton_step(vars);
-			vars->drop_next = codel_control_law(vars->drop_next,
-							    TART_INTERVAL,
-							    vars->rec_inv_sqrt);
 			do {
 				if (INET_ECN_set_ce(skb) && !overloaded) {
 					vars->ecn_mark++;
